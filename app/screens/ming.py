@@ -57,12 +57,18 @@ _PROGRESS_BAR_STYLE = """
     }
 """
 
+_PROGRESS_BAR_INACTIVE = """
+    QProgressBar { border: none; background: transparent; }
+    QProgressBar::chunk { background: transparent; }
+"""
+
 
 class MinG(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         self.table = None
         layout.addWidget(self._section1())
@@ -72,16 +78,21 @@ class MinG(QWidget):
 
         self.section3 = None
         self.section3_container = QFrame()
-        self.section3_container.setFixedHeight(210)
-        self.section3_container.setLayout(QVBoxLayout())
+        self.section3_container.setFixedHeight(190)
+        inner3 = QVBoxLayout()
+        inner3.setContentsMargins(0, 0, 0, 0)
+        self.section3_container.setLayout(inner3)
         layout.addWidget(self.section3_container)
         layout.addWidget(self._separator())
 
         self.section4 = None
         self.section4_container = QFrame()
         self.section4_container.setFixedHeight(200)
-        self.section4_container.setLayout(QVBoxLayout())
+        inner4 = QVBoxLayout()
+        inner4.setContentsMargins(0, 0, 0, 0)
+        self.section4_container.setLayout(inner4)
         layout.addWidget(self.section4_container)
+        layout.addStretch()
 
         self.setLayout(layout)
 
@@ -216,20 +227,16 @@ class MinG(QWidget):
         self.btn_run.setEnabled(False)
         self.progress_bar.setRange(0, total)
         self.progress_bar.setValue(0)
-        self.progress_label.setText(f"0 / {total}")
-        self.progress_bar.setVisible(True)
-        self.progress_label.setVisible(True)
+        self.progress_bar.setStyleSheet(_PROGRESS_BAR_STYLE)
 
     def _on_progress(self, current, total):
         self.progress_bar.setValue(current)
-        pct = int(current / total * 100) if total > 0 else 0
-        self.progress_label.setText(f"{current} / {total}  ({pct}%)")
 
     def _cleanup(self):
         QApplication.restoreOverrideCursor()
         self.btn_run.setEnabled(True)
-        self.progress_bar.setVisible(False)
-        self.progress_label.setVisible(False)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet(_PROGRESS_BAR_INACTIVE)
 
     def _on_gibbs_done(self, results):
         self._cleanup()
@@ -254,7 +261,6 @@ class MinG(QWidget):
             self.section3_container.layout().removeWidget(self.section3)
             self.section3.deleteLater()
         self.section3 = Section3(results, components, ref)
-        self.section3.setMaximumHeight(175)
         self.section3_container.layout().addWidget(self.section3)
         self.section3.setVisible(True)
 
@@ -304,10 +310,12 @@ class MinG(QWidget):
     # ------------------------------------------------------------------ UI build
     def _section1(self):
         section = QFrame()
-        section.setFixedHeight(125)
+        section.setFixedHeight(120)
         layout = QHBoxLayout()
+        layout.setContentsMargins(8, 4, 8, 4)
 
         col1 = QVBoxLayout()
+        col1.setSpacing(6)
 
         btn_open = QPushButton("Open File")
         btn_open.setFixedSize(130, 30)
@@ -336,18 +344,12 @@ class MinG(QWidget):
         self.progress_bar.setFixedHeight(16)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet(_PROGRESS_BAR_STYLE)
-        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet(_PROGRESS_BAR_INACTIVE)
 
-        self.progress_label = QLabel("0 / 0")
-        self.progress_label.setFixedWidth(130)
-        self.progress_label.setStyleSheet("color: black; font-size: 9px;")
-        self.progress_label.setVisible(False)
-
-        col1.addWidget(btn_open,            alignment=Qt.AlignmentFlag.AlignLeft)
-        col1.addWidget(self.btn_run,        alignment=Qt.AlignmentFlag.AlignLeft)
-        col1.addWidget(self.progress_bar,   alignment=Qt.AlignmentFlag.AlignLeft)
-        col1.addWidget(self.progress_label, alignment=Qt.AlignmentFlag.AlignLeft)
+        col1.addWidget(btn_open,          alignment=Qt.AlignmentFlag.AlignLeft)
+        col1.addWidget(self.btn_run,      alignment=Qt.AlignmentFlag.AlignLeft)
+        col1.addWidget(self.progress_bar, alignment=Qt.AlignmentFlag.AlignLeft)
 
         col2 = QVBoxLayout()
         self.table = QTableWidget()
@@ -387,17 +389,25 @@ class MinG(QWidget):
 
     def _section2(self):
         section = QFrame()
-        section.setFixedHeight(190)
+        section.setFixedHeight(210)
         outer = QVBoxLayout()
+        outer.setContentsMargins(8, 4, 8, 4)
         grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(8)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(3, 2)
 
         def lbl(text):
             w = QLabel(text)
             w.setStyleSheet("color: black;")
+            w.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             return w
 
         def inp():
             w = QLineEdit()
+            w.setFixedHeight(26)
             w.setStyleSheet(_LINE_EDIT_STYLE)
             return w
 
@@ -420,15 +430,23 @@ class MinG(QWidget):
         self.component_combobox.currentTextChanged.connect(self._on_component_changed)
         grid.addWidget(self.component_combobox, 4, 1)
 
-        grid.addWidget(lbl("Max. Value:"), 5, 0)
-        self.max_value_input = inp()
-        self.max_value_input.setEnabled(False)
-        grid.addWidget(self.max_value_input, 5, 1)
-
-        grid.addWidget(lbl("Min. Value:"), 6, 0)
+        range_widget = QWidget()
+        range_layout = QHBoxLayout(range_widget)
+        range_layout.setContentsMargins(0, 0, 0, 0)
+        range_layout.setSpacing(6)
+        lbl_min = QLabel("Min:")
+        lbl_min.setStyleSheet("color: black;")
         self.min_value_input = inp()
         self.min_value_input.setEnabled(False)
-        grid.addWidget(self.min_value_input, 6, 1)
+        lbl_max = QLabel("Max:")
+        lbl_max.setStyleSheet("color: black;")
+        self.max_value_input = inp()
+        self.max_value_input.setEnabled(False)
+        range_layout.addWidget(lbl_min)
+        range_layout.addWidget(self.min_value_input)
+        range_layout.addWidget(lbl_max)
+        range_layout.addWidget(self.max_value_input)
+        grid.addWidget(range_widget, 5, 1)
 
         grid.addWidget(lbl("N. Values T:"), 0, 2)
         self.n_values_t_input = inp(); grid.addWidget(self.n_values_t_input, 0, 3)
