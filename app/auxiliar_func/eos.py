@@ -1,5 +1,7 @@
 import numpy as np
 
+_kij_cache = {}
+
 
 def _compute_kij(gas_comp_names, gas_components):
     """
@@ -13,16 +15,19 @@ def _compute_kij(gas_comp_names, gas_components):
     Returns:
         kij : np.ndarray of shape (n, n)
     """
+    key = tuple(gas_comp_names)
+    if key in _kij_cache:
+        return _kij_cache[key]
+
     n = len(gas_comp_names)
     Vc = np.array([gas_components[name].get('Vc', 1.0) for name in gas_comp_names],
                   dtype=float)
-    kij = np.zeros((n, n))
-    for i in range(n):
-        for j in range(n):
-            if i != j and Vc[i] > 0 and Vc[j] > 0:
-                num = 8.0 * np.sqrt(Vc[i] * Vc[j])
-                denom = (Vc[i] ** (1.0 / 3.0) + Vc[j] ** (1.0 / 3.0)) ** 3
-                kij[i, j] = 1.0 - num / denom
+    Vc_cbrt = Vc ** (1.0 / 3.0)
+    denom = (Vc_cbrt[:, None] + Vc_cbrt[None, :]) ** 3
+    num = 8.0 * np.sqrt(np.outer(Vc, Vc))
+    kij = np.where((Vc[:, None] > 0) & (Vc[None, :] > 0), 1.0 - num / denom, 0.0)
+    np.fill_diagonal(kij, 0.0)
+    _kij_cache[key] = kij
     return kij
 
 
@@ -53,7 +58,7 @@ def fug(T, P, eq, n, components):
     if total_n < 1e-300:
         return [np.nan] * len(comp_names)
 
-    resultados = [0.0] * len(comp_names)
+    resultados = [1.0] * len(comp_names)
 
     gas_names = [name for name, d in components.items() if d.get('Phase', 'g').lower() != 's']
     solid_names = [name for name, d in components.items() if d.get('Phase', 'g').lower() == 's']
@@ -111,10 +116,18 @@ def fug(T, P, eq, n, components):
         return resultados
 
     # --- Cubic EOS (PR / SRK / RK) ---
+    def _pr_m(w):
+        w = np.asarray(w, dtype=float)
+        return np.where(
+            w <= 0.49,
+            0.37464 + 1.54226 * w - 0.26992 * w**2,
+            0.379642 + 1.48503 * w - 0.164423 * w**2 + 0.016666 * w**3,
+        )
+
     eos_params = {
         'Peng-Robinson': {
             'Omega_a': 0.45724, 'Omega_b': 0.07780,
-            'm_func': lambda w: 0.37464 + 1.54226 * w - 0.26992 * w**2,
+            'm_func': _pr_m,
             'alpha_func': lambda Tr, m: (1.0 + m * (1.0 - np.sqrt(Tr))) ** 2,
             'Z_coeffs': lambda A, B: [1, B - 1, A - 2*B - 3*B**2, -A*B + B**2 + B**3],
             'ln_phi_term': lambda Z, B: (1.0 / (2.0 * np.sqrt(2.0))) *
@@ -147,7 +160,7 @@ def fug(T, P, eq, n, components):
 
     m = params['m_func'](omega)
     Tr = T / Tc
-    alpha = np.array([params['alpha_func'](Tr[i], m[i]) for i in range(len(gas_names))])
+    alpha = params['alpha_func'](Tr, m)
 
     a_i = params['Omega_a'] * (R**2 * Tc**2 / Pc) * alpha
     b_i = params['Omega_b'] * (R * Tc / Pc)

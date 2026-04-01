@@ -63,13 +63,13 @@ class Gibbs:
 
         def objective(n):
             n_safe = np.maximum(n, 1e-300)
-            n_total = n_safe.sum()
+            n_gas_total = max(sum(n_safe[i] for i in gases), 1e-300)
             phi = fug(T=T, P=P, eq=self.equation, n=n_safe, components=self.data)
 
             G = 0.0
             for i in gases:
                 phi_i = max(phi[i] if not np.isnan(phi[i]) else 1.0, 1e-300)
-                y_i = max(n_safe[i] / n_total, 1e-300)
+                y_i = max(n_safe[i] / n_gas_total, 1e-300)
                 G += n_safe[i] * (df_pad[i] + R * T * (
                     np.log(phi_i) + np.log(y_i) + np.log(P)
                 ))
@@ -78,6 +78,18 @@ class Gibbs:
             return G + 1e-6
 
         def gradient(n):
+            # Analytical gradient for Ideal Gas (avoids nc+1 fug() calls per iteration)
+            if self.equation == 'Ideal Gas':
+                n_safe = np.maximum(n, 1e-300)
+                n_gas_total = max(sum(n_safe[i] for i in gases), 1e-300)
+                grad = np.zeros(len(n))
+                for i in gases:
+                    y_i = max(n_safe[i] / n_gas_total, 1e-300)
+                    grad[i] = df_pad[i] + R * T * (np.log(y_i) + np.log(P))
+                for i in solids:
+                    grad[i] = df_pad[i]
+                return grad
+            # Finite differences for non-ideal EOS
             eps = np.sqrt(np.finfo(float).eps)
             grad = np.zeros_like(n)
             f0 = objective(n)
@@ -107,7 +119,7 @@ class Gibbs:
                 'jac': constraints_jac,
             }],
             options={
-                'max_iter': 5000,
+                'max_iter': 2000,
                 'tol': 1e-8,
                 'print_level': 0,
             }

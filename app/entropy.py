@@ -74,13 +74,13 @@ class Entropy:
             T = max(T, 1.0)  # guard against non-positive T
 
             int_cp_vals, deltaH_list, deltaG_list = int_cp_T(T, self.data)
-            n_total = max(n.sum(), 1e-300)
+            n_gas_total = max(sum(n[gi] for gi in gases), 1e-300)
 
             S = 0.0
             for i in range(len(gases)):
                 gi = gases[i]
                 ni = max(n[gi], 1e-300)
-                yi = max(ni / n_total, 1e-300)
+                yi = max(ni / n_gas_total, 1e-300)
                 s_i = (
                     (deltaH_list[gi] - deltaG_list[gi]) / T0
                     - R * np.log(P)
@@ -91,13 +91,32 @@ class Entropy:
             return -(S + 1e-6)  # minimise negative entropy
 
         def gradient(x):
-            eps = np.sqrt(np.finfo(float).eps)
-            grad = np.zeros_like(x)
-            f0 = objective(x)
-            for k in range(len(x)):
-                x_p = x.copy()
-                x_p[k] += eps
-                grad[k] = (objective(x_p) - f0) / eps
+            # Analytical gradient: d(-S)/dn_k = -s_k  (for gas k);  d(-S)/dT = -sum_i n_i*Cp_i/T
+            n = x[:nc]
+            T = float(x[nc])
+            T_g = max(T, 1.0)
+            int_cp_vals, deltaH_list, deltaG_list = int_cp_T(T_g, self.data)
+            n_safe = np.maximum(n, 1e-300)
+            n_gas_total = max(sum(n_safe[gi] for gi in gases), 1e-300)
+            comp_list = list(self.data.values())
+
+            grad = np.zeros(len(x))
+            dS_dT = 0.0
+            for gi in gases:
+                ni = max(n_safe[gi], 1e-300)
+                yi = max(ni / n_gas_total, 1e-300)
+                s_i = (
+                    (deltaH_list[gi] - deltaG_list[gi]) / T0
+                    - R * np.log(P)
+                    - R * np.log(yi)
+                    + int_cp_vals[gi]
+                )
+                grad[gi] = -s_i
+                c = comp_list[gi]
+                cp_over_T = R * (c.get('a', 0) / T_g + c.get('b', 0)
+                                 + c.get('c', 0) * T_g + c.get('d', 0) / T_g ** 3)
+                dS_dT += ni * cp_over_T
+            grad[nc] = -dS_dT
             return grad
 
         def constraints_eq(x):
@@ -112,14 +131,33 @@ class Entropy:
             return np.append(elem, enthalpy)
 
         def constraints_jac(x):
-            # Finite-difference Jacobian for constraints
-            eps = np.sqrt(np.finfo(float).eps)
-            f0 = constraints_eq(x)
-            jac = np.zeros((len(f0), len(x)))
-            for k in range(len(x)):
-                x_p = x.copy()
-                x_p[k] += eps
-                jac[:, k] = (constraints_eq(x_p) - f0) / eps
+            # Analytical Jacobian — avoids nc+2 constraints_eq() calls per iteration.
+            # Layout: rows = [elem_balance (total_species), enthalpy_balance (1)]
+            #         cols = [n_0..n_{nc-1}, T]
+            n = x[:nc]
+            T = float(x[nc])
+            T_j = max(T, 1.0)
+            n_species = self.total_species
+
+            jac = np.zeros((n_species + 1, nc + 1))
+
+            # Element balance: d(A.T @ n - b)/dn = A.T,  d/dT = 0
+            jac[:n_species, :nc] = self.A.T
+
+            # Enthalpy balance: d(sum_j n_j*H_j(T) - H_init)/dn_k = H_k(T)
+            H_T = enthalpy_T(T_j, self.data)
+            jac[n_species, :nc] = H_T
+
+            # d(sum_j n_j*H_j(T))/dT = sum_j n_j * Cp_j(T)
+            comp_list = list(self.data.values())
+            dH_dT = 0.0
+            for j in range(nc):
+                c = comp_list[j]
+                Cp_j = R * (c.get('a', 0) + c.get('b', 0) * T_j
+                            + c.get('c', 0) * T_j ** 2 + c.get('d', 0) / T_j ** 2)
+                dH_dT += n[j] * Cp_j
+            jac[n_species, nc] = dH_dT
+
             return jac
 
         result = cyipopt.minimize_ipopt(
@@ -133,7 +171,7 @@ class Entropy:
                 'jac': constraints_jac,
             }],
             options={
-                'max_iter': 5000,
+                'max_iter': 2000,
                 'tol': 1e-8,
                 'print_level': 0,
             }
