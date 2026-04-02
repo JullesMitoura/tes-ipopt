@@ -173,7 +173,7 @@ def fug(T, P, eq, n, components):
     B = b_mix * P_pa / (R * T)
 
     Z_roots = np.roots(params['Z_coeffs'](A, B))
-    real_roots = Z_roots[np.isreal(Z_roots)].real
+    real_roots = Z_roots[np.abs(Z_roots.imag) < 1e-10].real
     pos_roots = real_roots[real_roots > B]
 
     if len(pos_roots) == 0:

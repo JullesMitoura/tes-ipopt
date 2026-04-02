@@ -56,7 +56,7 @@ class Gibbs:
         solids = self.identify_phases('s')
 
         df_pad = gibbs_pad(T, self.data)
-        R = 8.314
+        R = 8.314462
 
         # Pre-compute element balance RHS once
         b_elem = self.A.T @ initial  # shape (total_species,)
@@ -75,7 +75,7 @@ class Gibbs:
                 ))
             for i in solids:
                 G += n_safe[i] * df_pad[i]
-            return G + 1e-6
+            return G
 
         def gradient(n):
             # Analytical gradient for Ideal Gas (avoids nc+1 fug() calls per iteration)
@@ -121,6 +121,8 @@ class Gibbs:
             options={
                 'max_iter': 2000,
                 'tol': 1e-8,
+                'acceptable_tol': 1e-6,
+                'mu_strategy': 'adaptive',
                 'print_level': 0,
             }
         )

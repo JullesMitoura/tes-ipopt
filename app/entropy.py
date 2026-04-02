@@ -52,9 +52,10 @@ class Entropy:
         bnds = self.bnds_values(initial)
         nc = self.total_components
         T0 = 298.15
-        R = 8.314
+        R = 8.314462
 
         gases = self.identify_phases('g')
+        solids = self.identify_phases('s')
 
         # Pre-compute initial enthalpy (constant RHS for enthalpy balance)
         H_init_list = enthalpy_T(Tinit, self.data)
@@ -88,7 +89,11 @@ class Entropy:
                     + int_cp_vals[gi]
                 )
                 S += s_i * ni
-            return -(S + 1e-6)  # minimise negative entropy
+            for si in solids:
+                ni = max(n[si], 1e-300)
+                s_i = (deltaH_list[si] - deltaG_list[si]) / T0 + int_cp_vals[si]
+                S += s_i * ni
+            return -S  # minimise negative entropy
 
         def gradient(x):
             # Analytical gradient: d(-S)/dn_k = -s_k  (for gas k);  d(-S)/dT = -sum_i n_i*Cp_i/T
@@ -113,6 +118,14 @@ class Entropy:
                 )
                 grad[gi] = -s_i
                 c = comp_list[gi]
+                cp_over_T = R * (c.get('a', 0) / T_g + c.get('b', 0)
+                                 + c.get('c', 0) * T_g + c.get('d', 0) / T_g ** 3)
+                dS_dT += ni * cp_over_T
+            for si in solids:
+                ni = max(n_safe[si], 1e-300)
+                s_i = (deltaH_list[si] - deltaG_list[si]) / T0 + int_cp_vals[si]
+                grad[si] = -s_i
+                c = comp_list[si]
                 cp_over_T = R * (c.get('a', 0) / T_g + c.get('b', 0)
                                  + c.get('c', 0) * T_g + c.get('d', 0) / T_g ** 3)
                 dS_dT += ni * cp_over_T
@@ -173,6 +186,8 @@ class Entropy:
             options={
                 'max_iter': 2000,
                 'tol': 1e-8,
+                'acceptable_tol': 1e-6,
+                'mu_strategy': 'adaptive',
                 'print_level': 0,
             }
         )

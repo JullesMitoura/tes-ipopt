@@ -21,7 +21,7 @@ def gibbs_pad(T, components):
     Returns:
         list of float — chemical potential mu_i [J/mol] for each component
     """
-    R = 8.314
+    R = 8.314462
     T0 = 298.15
 
     results = []

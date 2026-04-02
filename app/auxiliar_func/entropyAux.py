@@ -12,7 +12,7 @@ def int_cp_T(T, components):
         DeltaH  : list of float — standard enthalpy of formation [J/mol]
         DeltaG  : list of float — standard Gibbs free energy of formation [J/mol]
     """
-    R = 8.314
+    R = 8.314462
     T0 = 298.15
 
     results, DeltaH, DeltaG = [], [], []
@@ -43,7 +43,7 @@ def enthalpy_T(T, components):
 
     H(T) = deltaH + R*(a*(T-T0) + b/2*(T^2-T0^2) + c/3*(T^3-T0^3) - d*(1/T - 1/T0))
     """
-    R = 8.314
+    R = 8.314462
     T0 = 298.15
 
     results = []
