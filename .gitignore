@@ -2,8 +2,6 @@
 __pycache__/
 *.pyc
 *.pyo
-app/solver/*
-!app/solver/README.txt
 build/
 dist/
 .DS_Store
